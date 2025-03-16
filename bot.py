@@ -6,6 +6,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Call
 import firebase_admin
 from firebase_admin import credentials, db
 
+
 TOKEN = '7743943724:AAH93OLyNfOoY_jT6hlf9plQ9MfX54E-zZI'
 
 # Настройка логирования
@@ -39,15 +40,26 @@ def save_to_firebase(user_id, choice, is_correct):
 
     ref.set({"correct": correct, "wrong": wrong})
 
-async def start(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Привет! Давай начнем игру. Напиши /send_images, чтобы выбрать картинку.')
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackContext
 
+async def start(update: Update, context: CallbackContext) -> None:
+    # Получаем имя пользователя
+    name = update.message.from_user.first_name
+
+    # Создаём клавиатуру
+    keyboard = [[InlineKeyboardButton("Начать игру", callback_data="start_game")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Отправляем приветственное сообщение с именем пользователя
+    await update.message.reply_text(f'Привет, {name}! Ты должен выбрать из двух картинок ту, которая не сгенерирована искусственным интеллектом.', reply_markup=reply_markup)
+
+    # Инициализация данных для игры
     context.user_data["rounds"] = 0
     context.user_data["correct"] = 0
     context.user_data["wrong"] = 0
-    context.user_data["used_images"] = set()  # Запоминаем использованные картинки
+    context.user_data["used_images"] = set()
 
-    await send_images(update.message.chat_id, context)  # Запускаем первый раунд
 
 async def send_images(chat_id, context: CallbackContext) -> None:
     if context.user_data["rounds"] >= 10:
@@ -84,6 +96,10 @@ async def button(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     chat_id = query.message.chat_id
     await query.answer()
+
+    if query.data == "start_game":
+        await send_images(chat_id, context)
+        return
 
     data = query.data.split('_')
     choice = int(data[1])
