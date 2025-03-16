@@ -6,7 +6,6 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Call
 import firebase_admin
 from firebase_admin import credentials, db
 
-
 TOKEN = '7743943724:AAH93OLyNfOoY_jT6hlf9plQ9MfX54E-zZI'
 
 # Настройка логирования
@@ -21,7 +20,7 @@ firebase_admin.initialize_app(cred, {
 })
 
 def get_images_from_google_sheets():
-    url = "https://script.google.com/macros/s/AKfycbxft9_xr1BDEwynxrT1Cp1Scvds4tc5mWf6PIZdh_naYIfDKfsLdtVVuw9lA09Iz2k/exec"
+    url = "https://script.google.com/macros/s/AKfycbw7EQo6pWok4oouMKjkG_pl2uczAJW6-Oc4kC1pYkyFj9ruRRZy1lrRwvxDfE-oMyrn/exec"
     response = requests.get(url)
     data = response.json()
     return data
@@ -40,55 +39,74 @@ def save_to_firebase(user_id, choice, is_correct):
 
     ref.set({"correct": correct, "wrong": wrong})
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackContext
+def get_user_stats(user_id):
+    ref = db.reference(f"user_choices/{user_id}")
+    user_data = ref.get() or {}
+    return user_data.get("correct", 0), user_data.get("wrong", 0)
 
 async def start(update: Update, context: CallbackContext) -> None:
-    # Получаем имя пользователя
     name = update.message.from_user.first_name
+    user_id = update.message.from_user.id
 
-    # Создаём клавиатуру
+    # Получаем статистику из Firebase
+    total_correct, total_wrong = get_user_stats(user_id)
+    total_games = total_correct + total_wrong
+
+    stats_text = f"Ваша общая статистика:\n✅ Правильных: {total_correct}\n❌ Неправильных: {total_wrong}"
+    if total_games > 0:
+        accuracy = round(total_correct / total_games * 100, 2)
+        stats_text += f"\n🎯 Точность: {accuracy}%"
+    else:
+        stats_text += "\nВы ещё не играли!"
+
     keyboard = [[InlineKeyboardButton("Начать игру", callback_data="start_game")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Отправляем приветственное сообщение с именем пользователя
-    await update.message.reply_text(f'Привет, {name}! Ты должен выбрать из двух картинок ту, которая не сгенерирована искусственным интеллектом.', reply_markup=reply_markup)
+    await update.message.reply_text(f'Привет, {name}! Выберите из двух картинок ту, которая не сгенерирована искусственным интеллектом.\n\n{stats_text}', reply_markup=reply_markup)
 
     # Инициализация данных для игры
     context.user_data["rounds"] = 0
     context.user_data["correct"] = 0
     context.user_data["wrong"] = 0
     context.user_data["used_images"] = set()
-
+    context.user_data["current_images"] = []  # Список изображений для текущего листа
 
 async def send_images(chat_id, context: CallbackContext) -> None:
     if context.user_data["rounds"] >= 10:
         await show_results(chat_id, context)
         return
 
-    images = get_images_from_google_sheets()
+    # Если список изображений пуст, загружаем новый лист
+    if not context.user_data["current_images"]:
+        context.user_data["current_images"] = get_images_from_google_sheets()
+
+    images = context.user_data["current_images"]
 
     correct_images = [img for img in images if img["is_correct"] == 1 and img["image_url"] not in context.user_data["used_images"]]
     wrong_images = [img for img in images if img["is_correct"] == 0 and img["image_url"] not in context.user_data["used_images"]]
 
     if not correct_images or not wrong_images:
-        await context.bot.send_message(chat_id, "Ошибка: недостаточно изображений в базе данных.")
+        await context.bot.send_message(chat_id, "Ошибка: недостаточно изображений на текущем листе. Завершаем игру.")
+        await show_results(chat_id, context)
         return
 
-    image1 = random.choice(correct_images)
-    image2 = random.choice(wrong_images)
+    correct_image = random.choice(correct_images)
+    wrong_image = random.choice(wrong_images)
 
-    context.user_data["used_images"].add(image1["image_url"])
-    context.user_data["used_images"].add(image2["image_url"])
+    image_list = [correct_image, wrong_image]
+    random.shuffle(image_list)
 
-    keyboard1 = [[InlineKeyboardButton("Выбрать", callback_data=f"choose_1_{image1['is_correct']}")]]
-    keyboard2 = [[InlineKeyboardButton("Выбрать", callback_data=f"choose_2_{image2['is_correct']}")]]
+    context.user_data["used_images"].add(correct_image["image_url"])
+    context.user_data["used_images"].add(wrong_image["image_url"])
+
+    keyboard1 = [[InlineKeyboardButton("Выбрать", callback_data=f"choose_1_{image_list[0]['is_correct']}")]]
+    keyboard2 = [[InlineKeyboardButton("Выбрать", callback_data=f"choose_2_{image_list[1]['is_correct']}")]]
 
     reply_markup1 = InlineKeyboardMarkup(keyboard1)
     reply_markup2 = InlineKeyboardMarkup(keyboard2)
 
-    msg1 = await context.bot.send_photo(chat_id=chat_id, photo=image1["image_url"], reply_markup=reply_markup1)
-    msg2 = await context.bot.send_photo(chat_id=chat_id, photo=image2["image_url"], reply_markup=reply_markup2)
+    msg1 = await context.bot.send_photo(chat_id=chat_id, photo=image_list[0]["image_url"], reply_markup=reply_markup1)
+    msg2 = await context.bot.send_photo(chat_id=chat_id, photo=image_list[1]["image_url"], reply_markup=reply_markup2)
 
     context.user_data["messages"] = [msg1.message_id, msg2.message_id]
 
@@ -98,6 +116,17 @@ async def button(update: Update, context: CallbackContext) -> None:
     await query.answer()
 
     if query.data == "start_game":
+        context.user_data["current_images"] = get_images_from_google_sheets()  # Загружаем лист при старте
+        await send_images(chat_id, context)
+        return
+
+    if query.data == "continue_game":
+        # Сбрасываем данные и загружаем новый лист
+        context.user_data["rounds"] = 0
+        context.user_data["correct"] = 0
+        context.user_data["wrong"] = 0
+        context.user_data["used_images"] = set()
+        context.user_data["current_images"] = get_images_from_google_sheets()  # Новый лист
         await send_images(chat_id, context)
         return
 
@@ -121,7 +150,7 @@ async def button(update: Update, context: CallbackContext) -> None:
     response_text = f"Вы выбрали изображение {choice}: {'✅ Правильно!' if is_correct else '❌ Неправильно!'}"
     await query.message.reply_text(response_text)
 
-    await send_images(chat_id, context)  # Отправляем новые картинки
+    await send_images(chat_id, context)
 
 async def show_results(chat_id, context: CallbackContext) -> None:
     correct = context.user_data.get("correct", 0)
@@ -129,12 +158,16 @@ async def show_results(chat_id, context: CallbackContext) -> None:
     total = correct + wrong
 
     result_text = f"""🏁 *Игра окончена!*  
-Вы сделали 10 выборов.  
+Вы сделали {total} выборов.  
 ✅ Правильных: {correct}  
 ❌ Неправильных: {wrong}  
-🎯 Точность: {round(correct / total * 100, 2)}%"""
+🎯 Точность: {round(correct / total * 100, 2) if total > 0 else 0}%"""
 
-    await context.bot.send_message(chat_id, result_text, parse_mode="Markdown")
+    # Добавляем кнопку "Продолжить"
+    keyboard = [[InlineKeyboardButton("Продолжить", callback_data="continue_game")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.send_message(chat_id, result_text, parse_mode="Markdown", reply_markup=reply_markup)
 
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
