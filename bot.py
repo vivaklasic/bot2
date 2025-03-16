@@ -5,7 +5,7 @@ from aiogram.utils import executor
 import requests
 
 # Токен от твоего бота
-TOKEN = 'YOUR_BOT_TOKEN'
+TOKEN = '7743943724:AAH93OLyNfOoY_jT6hlf9plQ9MfX54E-zZI'
 
 # Инициализация бота и диспетчера
 bot = Bot(token=TOKEN)
