@@ -5,6 +5,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
 import firebase_admin
 from firebase_admin import credentials, db
+import os
+import json
 
 TOKEN = '7743943724:AAH93OLyNfOoY_jT6hlf9plQ9MfX54E-zZI'
 
@@ -14,7 +16,9 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Настройка Firebase
-cred = credentials.Certificate(r"C:\Users\Admin\Downloads\botchoiseimage-firebase-adminsdk-fbsvc-fff457209b.json")
+cred_json = os.getenv("FIREBASE_CREDENTIALS")
+cred_dict = json.loads(cred_json)
+cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://botchoiseimage-default-rtdb.europe-west1.firebasedatabase.app/'
 })
