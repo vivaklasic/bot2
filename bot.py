@@ -59,7 +59,7 @@ async def start(update: Update, context: CallbackContext) -> None:
     else:
         stats_text += "\nВы ещё не играли!"
 
-    keyboard = [[InlineKeyboardButton("Начать игру", callback_data="start_game")]]
+    keyboard = [[InlineKeyboardButton("Начать тест", callback_data="start_game")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(f'Привет, {name}! Выберите из двух картинок ту, которая не сгенерирована искусственным интеллектом.\n\n{stats_text}', reply_markup=reply_markup)
@@ -157,7 +157,7 @@ async def show_results(chat_id, context: CallbackContext) -> None:
     wrong = context.user_data.get("wrong", 0)
     total = correct + wrong
 
-    result_text = f"""🏁 *Игра окончена!*  
+    result_text = f"""🏁 *Тест окончен!*  
 Вы сделали {total} выборов.  
 ✅ Правильных: {correct}  
 ❌ Неправильных: {wrong}  
