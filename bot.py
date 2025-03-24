@@ -8,7 +8,7 @@ from firebase_admin import credentials, db
 import os
 import json
 
-TOKEN = '7743943724:AAH93OLyNfOoY_jT6hlf9plQ9MfX54E-zZI'
+TOKEN = ''
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
